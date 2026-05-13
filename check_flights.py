@@ -25,14 +25,8 @@ FLIGHT_DAYS = ["28", "29"]
 FLIGHT_YEAR = "2026"
 
 # Read from env vars (set as GitHub Secrets) or hardcoded fallback
-TELEGRAM_BOT_TOKEN = os.environ.get(
-    "TELEGRAM_BOT_TOKEN",
-    "REDACTED"
-)
-TELEGRAM_CHAT_ID = os.environ.get(
-    "TELEGRAM_CHAT_ID",
-    "320925304"
-)
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 
 # ─── Data model ───────────────────────────────────────────────────────────────
