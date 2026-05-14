@@ -15,6 +15,16 @@ import sys
 import time
 import requests
 from datetime import datetime
+
+MONTH_MAP = {
+    "01": "gen", "02": "feb", "03": "mar", "04": "apr",
+    "05": "mag", "06": "giu", "07": "lug", "08": "ago",
+    "09": "set", "10": "ott", "11": "nov", "12": "dic",
+}
+
+def _months_ahead(month_num_str: str, year: str) -> int:
+    now = datetime.now()
+    return max(0, (int(year) - now.year) * 12 + (int(month_num_str) - now.month))
 from dataclasses import dataclass, field
 from playwright.sync_api import sync_playwright
 

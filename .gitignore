@@ -1,0 +1,24 @@
+# Secrets & dati utente
+.env
+monitors.json
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+
+# Log
+*.log
+flight_checker.log
+
+# Macchina
+.DS_Store
+
+# Debug / screenshot temporanei
+debug_*.png
+last_check_*.png
+test_*.png
+
+# Output / dati locali
+/tmp/
