@@ -4,6 +4,7 @@ Aeroitalia Interactive Flight Bot
 Guided form-based search via Telegram ConversationHandler.
 """
 
+from __future__ import annotations
 import re
 import os
 import json
@@ -14,6 +15,7 @@ import requests
 import logging
 from datetime import datetime
 from dataclasses import dataclass, asdict
+from typing import Optional, List
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -67,7 +69,7 @@ def save_monitors(monitors: dict) -> None:
         logging.error(f"Failed to save monitors: {e}")
 
 
-def monitor_key(user_id: int, airline: str, origin: str, dest: str, date_go: list, date_ret: list | None) -> str:
+def monitor_key(user_id: int, airline: str, origin: str, dest: str, date_go: list, date_ret: Optional[list]) -> str:
     dg = "-".join(date_go)
     dr = "-".join(date_ret) if date_ret else "none"
     return f"{user_id}_{airline}_{origin}_{dest}_{dg}_{dr}"
@@ -485,8 +487,8 @@ class Flight:
 
 
 # ─── Scraper ──────────────────────────────────────────────────────────────────
-def scrape_flights(origin_term: str, dest_term: str, day: str, month_it: str, year: str) -> list[Flight]:
-    flights: list[Flight] = []
+def scrape_flights(origin_term: str, dest_term: str, day: str, month_it: str, year: str) -> List[Flight]:
+    flights: List[Flight] = []
     # IATA dell'aeroporto (per popolare origin_airport/dest_airport dei Flight)
     origin_iata_guess = airport_iata(origin_term)
     dest_iata_guess = airport_iata(dest_term)
@@ -660,8 +662,8 @@ def scrape_flights(origin_term: str, dest_term: str, day: str, month_it: str, ye
 
 
 # ─── Scraper Ryanair ──────────────────────────────────────────────────────────
-def scrape_flights_ryanair(origin_iata: str, dest_iata: str, day: str, month_it: str, year: str) -> list[Flight]:
-    flights: list[Flight] = []
+def scrape_flights_ryanair(origin_iata: str, dest_iata: str, day: str, month_it: str, year: str) -> List[Flight]:
+    flights: List[Flight] = []
     date_str = f"{year}-{month_num(month_it)}-{day}"
     url = (
         "https://www.ryanair.com/it/it/trip/flights/select"
@@ -975,7 +977,7 @@ def _kiwi_variables(origin_iata, dest_iata, date_iso: str, limit: int = 10) -> d
     }
 
 
-def scrape_flights_kiwi(origin_iata, dest_iata, day: str, month_it: str, year: str) -> list[Flight]:
+def scrape_flights_kiwi(origin_iata, dest_iata, day: str, month_it: str, year: str) -> List[Flight]:
     date_iso = f"{year}-{month_num(month_it)}-{day.zfill(2)}"
     try:
         r = requests.post(
@@ -1396,7 +1398,22 @@ def flight_booking_url(flight: Flight, airline: str, day: str, month_it: str, ye
     return f"https://www.google.com/search?q={o}+{d}+{date_iso}"
 
 
-def format_leg(flights: list[Flight], orig: str, dest: str, dlabel: str,
+async def send_long_message(chat, text: str, parse_mode: str = "Markdown", reply_markup=None, max_len: int = 4096):
+    """Split and send a message that may exceed Telegram's 4096 char limit."""
+    chunks = []
+    while len(text) > max_len:
+        split_at = text.rfind("\n", 0, max_len)
+        if split_at == -1:
+            split_at = max_len
+        chunks.append(text[:split_at])
+        text = text[split_at:].lstrip("\n")
+    chunks.append(text)
+    for i, chunk in enumerate(chunks):
+        markup = reply_markup if i == len(chunks) - 1 else None
+        await chat.send_message(chunk, parse_mode=parse_mode, reply_markup=markup)
+
+
+def format_leg(flights: List[Flight], orig: str, dest: str, dlabel: str,
                airline: str = "", day: str = "", month_it: str = "", year: str = "") -> list[str]:
     if not flights:
         return [f"❌ *Nessun volo* {orig} → {dest} il {dlabel}\n_(Sold Out o rotta non disponibile)_"]
@@ -1752,7 +1769,8 @@ async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         flights_go = await asyncio.to_thread(scraper, origin_arg, dest_arg, day_go, month_go, year_go)
     except Exception as e:
-        await update.effective_chat.send_message(f"❌ Errore ricerca andata:\n`{e}`", parse_mode="Markdown")
+        err_msg = str(e)[:300]
+        await update.effective_chat.send_message(f"❌ Errore ricerca andata:\n`{err_msg}`", parse_mode="Markdown")
         return ConversationHandler.END
 
     lines = format_leg(flights_go, origin_input.upper(), dest_input.upper(), dlabel_go,
@@ -1867,7 +1885,8 @@ async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     else:
         keyboard_rows.append([InlineKeyboardButton("🔄 Nuova ricerca", callback_data="new_search")])
 
-    await update.effective_chat.send_message(
+    await send_long_message(
+        update.effective_chat,
         "\n".join(lines),
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard_rows),
@@ -1877,7 +1896,7 @@ async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 # ─── Monitor registration & scheduled check ───────────────────────────────────
 
-def flights_to_state(flights: list[Flight] | None) -> dict:
+def flights_to_state(flights: Optional[List[Flight]]) -> dict:
     """Serialize flights to {flight_number: price} for diff comparison."""
     if not flights:
         return {}
@@ -1893,9 +1912,9 @@ def register_monitor(
     origin_input: str,
     dest_input: str,
     date_go: list,
-    date_ret: list | None,
-    flights_go: list[Flight],
-    flights_ret: list[Flight] | None,
+    date_ret: Optional[list],
+    flights_go: List[Flight],
+    flights_ret: Optional[List[Flight]],
 ) -> str:
     key = monitor_key(user_id, airline, origin_input.upper(), dest_input.upper(), date_go, date_ret)
     monitors = load_monitors()
